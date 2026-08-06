@@ -1,37 +1,55 @@
 name: Prepare Seven language contribution
 
 on:
-  push:
+  pull_request_target:
     branches:
       - main
+    types:
+      - opened
+      - synchronize
+      - reopened
 
 permissions:
   contents: write
 
 jobs:
   prepare:
-    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.head.ref == 'agent/add-seven-language'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: agent/add-seven-language
           fetch-depth: 0
 
+      - name: Stop when generation is already complete
+        id: state
+        shell: bash
+        run: |
+          if test -e vendor/grammars/Seven; then
+            echo "complete=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "complete=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: ruby/setup-ruby@v1
+        if: steps.state.outputs.complete != 'true'
         with:
           ruby-version: '3.4'
           bundler-cache: true
 
       - name: Generate and validate Seven language support
+        if: steps.state.outputs.complete != 'true'
         shell: bash
         run: |
           set -euo pipefail
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git switch -C agent/add-seven-language
 
           script/add-grammar https://github.com/gabriell211/Seven
 
@@ -75,7 +93,7 @@ jobs:
           bundle exec rake test
           bundle exec bin/github-linguist samples/Seven --breakdown
 
-          rm .github/workflows/prepare-seven-language.yml
+          rm -f .github/workflows/prepare-seven-language.yml
           git add -A
-          git commit -m "Add Seven programming language [skip ci]"
-          git push --force origin HEAD:agent/add-seven-language
+          git commit -m "Add Seven programming language"
+          git push origin HEAD:agent/add-seven-language
